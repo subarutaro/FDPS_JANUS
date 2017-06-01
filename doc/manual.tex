@@ -1,0 +1,288 @@
+\documentclass[11pt,a4j,titlepage,oneside,openright]{jsbook}
+\pagestyle{headings}
+
+%from 000a_header
+%\usepackage{bm}
+\usepackage{amsmath,amssymb,amsfonts,amsthm}
+%\usepackage{multirow}
+\usepackage{url}
+\usepackage[dvipdfmx]{graphicx}
+\usepackage{afterpage}
+\usepackage{cite}
+
+\usepackage{color}
+
+\def\vector#1{\mbox{\boldmath $#1$}}
+
+\makeatletter
+\renewcommand{\theequation}{\arabic{chapter}.\arabic{section}.\arabic{equation}}
+\@addtoreset{equation}{section}
+\makeatother
+
+%from jsbook mima version
+\setlength{\hoffset}{+00mm}
+\setlength{\voffset}{-05mm}
+\setlength{\textheight}{36\baselineskip}
+\addtolength{\textheight}{\topskip}
+
+\setlength{\oddsidemargin}{-1truein}% いったん左余白を実質上 0pt とする
+\addtolength{\oddsidemargin}{1.2truein}% 左余白幅
+\setlength{\evensidemargin}{-1truein}% いったん左余白を実質上 0pt とする
+\addtolength{\evensidemargin}{1.1truein}% 左余白幅
+\textwidth=6.0truein%
+\fullwidth\textwidth% ヘッダーの線幅を \textwidth に一致
+
+\usepackage{multicol}
+\usepackage{comment}
+\usepackage{ulem}
+
+\usepackage{accents}
+%\usepackage{algorithm2e}
+\usepackage{algpseudocode}
+
+%for write C/C++ code
+\usepackage{ascmac}
+\usepackage{here}
+\usepackage{txfonts}
+\usepackage{listings, jlisting}
+\usepackage{remreset}
+
+\lstset{language=c,
+  basicstyle=\ttfamily\scriptsize,
+  commentstyle=\textit,
+  classoffset=1,
+  keywordstyle=\bfseries,
+  frame=tRBl,
+  framesep=5pt,
+  showstringspaces=false,
+  numbers=left,
+  stepnumber=1,
+  numberstyle=\tiny,
+  tabsize=2
+}
+%lstlistingに章番号を付けない
+\makeatletter
+\AtBeginDocument{
+\@removefromreset{lstlisting}{chapter}
+\def\thelstlisting{\arabic{lstlisting}}}
+\makeatother
+
+\newcommand{\Tabref}[1]{表~\ref{#1}}
+\newcommand{\Equref}[1]{式~(\ref{#1})}
+\newcommand{\Figref}[1]{図~\ref{#1}}
+
+\begin{comment}
+\hoffset = 0pt
+\voffset = 0pt
+\topmargin = -72.27pt
+\headheight = 25mm
+\headsep = 0pt
+\oddsidemargin = -15.36542pt
+%\textheight = 634pt
+\textheight = 247mm
+\textwidth = 483.18904pt
+%\paperheight = 845pt
+\paperheight = 297mm
+%\paperwidth = 597pt
+\paperwidth = 210mm
+\columnsep=28.45274pt
+
+\makeatletter  % --- 「おまじないモード」に入る
+
+\renewcommand{\section}{%
+   \@startsection{section}{1}{\z@}%
+   {0.5\Cvs \@plus.0\Cdp \@minus.2\Cdp}%  上の空き
+   {0.2\Cvs \@plus.1\Cdp \@minus.3\Cdp}%  下の空き
+   {\reset@font\large\bfseries}}%         字の大きさ
+
+\makeatother   % --- 「おまじないモード」から抜ける
+
+\makeatletter  % --- 「おまじないモード」に入る
+
+\renewcommand{\subsection}{%
+   \@startsection{subsection}{1}{\z@}%
+   {0.3\Cvs \@plus.0\Cdp \@minus.2\Cdp}%  上の空き
+   {0.1\Cvs \@plus.1\Cdp \@minus.3\Cdp}%  下の空き
+   {\reset@font\large\bfseries}}%         字の大きさ
+
+\makeatother   % --- 「おまじないモード」から抜ける
+\end{comment}
+
+\begin{document}
+\setlength{\baselineskip}{16pt}
+\frontmatter
+
+\title{ \Large{博士論文}  \\　\\　\\　 \\} 
+\author{\\ \\平成 25 年度  \\ \\ \\
+ \\ \\ \LARGE{野村  \ 昴太郎}}
+
+ \thispagestyle{empty}
+
+%\hspace{\fill} {\large 論文番号~5-07~~~~~}
+   %\vspace{2cm}
+\begin{center}
+   \vspace{8.0cm}
+    {\LARGE  FDPSを用いたJanus粒子のMDシミュレーション}\\
+   \vspace{3mm}
+
+ \vspace{10.0cm}
+ {\LARGE 野村　昴太郎} \\
+ \vspace{1.5cm}
+\end{center}
+
+\setcounter{page}{0}
+
+\setcounter{tocdepth}{2}
+\markboth{目次}{}
+%index
+\setcounter{page}{1}
+%\tableofcontents
+
+\mainmatter
+
+\chapter{概要} %1
+本文書では，FDPSをもちいて実装されたJanus粒子の分子動力学シミュレーションプログラムに関し，使用方法や実装中に気づいた点について記述する．
+FDPSに関する説明はFDPSのマニュアルを参照されたし．
+
+\chapter{使用方法}
+\subsection{コンパイル}
+本プログラムは，以下の環境でコンパイルできることが確認されている．
+\begin{itemize}
+ \item g++ 4.9.0
+\end{itemize}
+c++11がコンパイル可能な環境ならば大丈夫だと思われる．
+srcディレクトリに移動後，付属のMakefileによりmakeコマンドでコンパイルが実行できる．デフォルトの実行ファイル名はjanus.outとなっている．
+
+\subsection{オプション}
+本節ではコンパイル時に指定できるオプションを紹介しする．
+   \subsubsection{-DPARTICLE\_SIMULATOR\_THREAD\_PARALLEL}
+    OpenMPを用いて並列で計算を実行するためのオプション．コンパイラに適したOpenMP用のオプションを適宜追加する必要がある(gccならば-fopenmp)．
+   \subsubsection{-DPARTICLE\_SIMULATOR\_MPI\_PARALLEL}
+   MPIを用いて並列化するためのオプション．コンパイラをmpi版のものに変更する必要がある．
+
+   \subsubsection{-DNOSE\_HOOVER}
+   温度制御を追加するためのオプション．このオプションを有効にするとNVTアンサンブル(になっている保証はない)で実行することができる．
+   熱浴の質量に当たる値$Q$は，プログラム内でグローバルな定数として与えられている．この値の大きさによっては計算が正しく実行できない場合がある．
+   計算が破綻する場合には，$Q$の値を10倍してみることをおすすめする．
+
+   \subsection{実行条件の変更方法}
+   janus.cppの最初の方に，実行時に与えることのできないシミュレーション条件をグローバル変数として並べてある．
+   主要なものを以下に説明する．Soft Matter論文の1から3パッチの場合の変数は，ソースコードに例として与えてある．
+   \subsubsection{パッチの数(Npatch)}
+    パッチの数を指定する．現状，複数種類のJanus粒子を取り扱うことはできない．
+   \subsubsection{各パッチのベクトル(patch)}
+    各パッチの方向を示すベクトルを(x,y,z)のPS::F64vec型の配列として宣言する．Npatchの数だけベクトルを宣言できる．
+   \subsubsection{coef\_r}
+    斥力のパラメータ$\alpha^{\mathrm R}$.
+   \subsubsection{coef\_a}
+    引力のパラメータ$\alpha^{\mathrm A}$.
+   \subsubsection{coef\_v}
+    $f(n_i,n_j,r_{ij})$の指数$\nu$.
+   \subsubsection{tm}
+    各パッチの角度のカットオフ距離$\theta_m$ [rad].
+   \subsubsection{solvent\_ratio}
+    溶媒(斥力のみ働く粒子)の割合([0.0,1.0])．FCCの座標を生成する場合，ランダムに溶媒が選ばれる．
+
+ \section{実行方法}
+   \subsection{実行時オプション}
+   本節では実行時に指定できるオプションを紹介する．デフォルト値については-hオプションを参照のこと．
+   \subsubsection{-N [number of particle]}
+   粒子数を指定する．初期条件としてFCCに並べているため，現状$4 \times n^3$(ただし$n$は自然数)しか指定できない．
+   \subsubsection{-d [density]}
+   数密度を指定する．
+   \subsubsection{-T [density]}
+   温度を無次元数で指定する．
+   \subsubsection{-s [number of steps]}
+   ステップ数を指定する．
+   \subsubsection{-S [number of steps]}
+   何ステップごとにスナップショットを書き出すか，インターバルを指定する．
+   \subsubsection{-D [number of steps]}
+   何ステップごとにポテンシャルエネルギー，運動エネルギー，熱浴のエネルギー，全エネルギーなどを書き出すか指定する．
+   \subsubsection{-e [number of steps]}
+   何ステップ平衡化計算を行うか指定する．平衡化計算中は毎ステップ速度スケーリングによって速度が補正される．
+   \subsubsection{-o [name of directory]}
+   出力されるデータを置くディレクトリーを指定する．実行時にそのディレクトリがない場合は生成される．デフォルトは「./result」
+   \subsubsection{-o [name of directory]}
+   入力の座標ファイル(CDV形式)を指定する(未実装)．
+   \subsubsection{-t [time]}
+   無次元時間で時間刻みを指定する．1e-4以下を推奨．
+   \subsubsection{-n [number of group]}
+   n\_group\_limitの値を指定する．実行速度に関係する場合がある．基本的には指定不要．
+
+\chapter{気づいた点}
+
+ \section{ポテンシャルエネルギーと力，トルクに関する考察}
+ $\theta_m = \pi/2$以外の場合，$f^{\nu-1}(n_i,n_j,r_{ij})$が$\pi\theta/2\theta_m = \pi/2$で連続でない(しかもその差が巨大な)ため回転運動を入れた場合，全エネルギーが保存しない．
+ 
+
+%\chapter{実装}
+%実装は，LiらのSoft Matter(2016)\cite{}を参考に行ったが，いくつかの改良点があるのでそれらを記述及び考察する．
+%本文書では上記のSoft Matter論文を，参考論文と呼ぶ．
+
+% 以下に実装に当たり，主要な部分を記述する．
+
+% まず，Janus粒子間のポテンシャルエネルギーは
+% \begin{eqnarray}
+%  U_{ij} = \left\{
+%   \begin{array}{l}
+%    \frac{\alpha^{\mathrm R}}{2} \left( 1 - r_{ij} \right)^2 - \sum^{M_i}_{\kappa=1}\sum^{M_j}_{\lambda=1} \frac{\alpha^{\mathrm A}}{2} f^{\nu}(\boldsymbol{n}_j, \boldsymbol{n}_j, \boldsymbol{r}_{ij}) \left(r_{ij} - r_{ij}^2 \right)\\
+%    0
+%   \end{array}
+%   \right.
+% \end{eqnarray}
+% となる．ただし
+% \begin{eqnarray}
+%  f(\boldsymbol{n}_j, \boldsymbol{n}_j, \boldsymbol{r}_{ij}) = \left\{
+%   \begin{array}{l}
+%    cos(\frac{\pi}{2\theta_m}\theta_i)cos(\frac{\pi}{2\theta_m}\theta_j) \\
+%    0
+%   \end{array}
+%   \right..
+% \end{eqnarray}
+% このとき，力とトルクはそれぞれ
+% \begin{eqnarray}
+%  \boldsymbol{F}_{ij} = \alpha^{\mathrm R} \left( 1 - r_{ij}\right)\frac{\boldsymbol{r}_{ij}}{r_{ij}}
+%   + \sum^{M_i}_{\kappa=1}\sum^{M_j}_{\lambda=1}
+%   \left[
+%    \alpha^{\mathrm A} f^{\nu}(\boldsymbol{n}_j, \boldsymbol{n}_j, \boldsymbol{r}_{ij}) \left(\frac{1}{2} - r_{ij} \right)\frac{\boldsymbol{r}_{ij}}{r_{ij}} \right. \\
+
+%   - \frac{\alpha^\mathrm{A}}{2} \left(r_{ij} - r_{ij}^2\right)
+%   \nu f^{\nu-1}(\boldsymbol{n}_j, \boldsymbol{n}_j, \boldsymbol{r}_{ij}) \left(r_{ij} - r_{ij}^2 \right) \\
+% \left.  \left\{ \frac{\pi}{2\theta^\kappa_m}\sin\left(\frac{\pi}{2\theta_m}\theta_i\right) \frac{\partial\theta_i}{\partial\cos\theta_i} \frac{\partial\cos\theta_i}{\partial\boldsymbol{r}_{ij}}\cos\left(\frac{\pi}{2\theta_m}\theta_j\right) \right\}
+% \right]
+% \end{eqnarray}
+% \begin{eqnarray}
+%  U_{ij} = \left\{
+%   \begin{array}{l}
+%    \frac{\alpha^{\mathrm R}}{2} \left( 1 - r_{ij} \right)^2 - \sum^{M_i}_{\kappa=1}\sum^{M_j}_{\lambda=1} \frac{\alpha^{\mathrm A}}{2} f^{\nu}(\boldsymbol{n}_j, \boldsymbol{n}_j, \boldsymbol{r}_{ij}) \left(r_{ij} - r_{ij}^2 \right)\\
+%    0
+%   \end{array}
+%   \right.
+% \end{eqnarray}
+
+% \section{$\frac{1}{\sqrt{1 - cos^2\theta}}$の取り扱い}
+% 参考論文の式(14)及び(15)では
+% \begin{eqnarray}
+%  \frac{\partial\theta^\kappa_i}{\partial \cos\theta^\kappa_i} = \left\{
+%   \begin{array}{l}
+%    0 \\
+%    \frac{1}{\sqrt{1 - \cos^2\theta^\kappa_i}}
+%   \end{array}
+%   \right.
+% \end{eqnarray}
+% となっている．
+% しかしながら，力及びトルクの計算では$\frac{\partial\theta^\kappa_i}{\partial \cos\theta^\kappa_i}=\frac{1}{\sin(\theta^\kappa_i)}$は必ず$\sin(\frac{\pi}{2\theta^\kappa_m}\theta^\kappa_i)$との積として現れる．
+% \begin{eqnarray}
+%  \lim_{\theta \rightarrow 0} \frac{\sin(a\theta)}{\sin(\theta)} = a
+% \end{eqnarray}
+% であるので，$\theta^\kappa_i$が$0$に近づいた場合に，力やトルクは$0$ではなく，一定の値に近づくはずである．
+% したがって，本プログラムでは，$\theta^\kappa_i$が十分に小さい時($<1e-5$)，
+% \begin{eqnarray}
+%  \sin\left(\frac{\pi}{2\theta^\kappa_m}\right) \frac{\partial\theta^\kappa_i}{\partial \cos\theta^\kappa_i} = \frac{\pi}{2\theta^\kappa_m}
+% \end{eqnarray}
+% として計算している．
+
+% せっかく四元数を導入しているにもかかわらず，通常の角度表記に落とし込んでいるために問題のある状態になっている．
+% $\theta=0$となる状態は頻繁に起こりえる．
+
+\end{document}
