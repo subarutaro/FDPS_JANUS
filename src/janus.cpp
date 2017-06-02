@@ -73,6 +73,11 @@ const PS::F64 solvent_ratio = 0.0;
 #ifdef NOSE_HOOVER
 const PS::F64 Q = 30.0;
 #endif
+
+#ifdef DISSIPATIVE_RANDOM
+const PS::F64 gamma_dpd = 4.5;
+const PS::F64 rn_max = sqrt(3.0);
+#endif
 //------------------
 
 class Quaternion{
@@ -417,8 +422,8 @@ struct CalcForceEpEp{
 
   CalcForceEpEp(
 #ifdef DISSIPATIVE_RANDOM
-		const PS::F64 _dt;
-		const PS::F64 _temperature;
+		const PS::F64 _dt,
+		const PS::F64 _temperature
 #endif
 		)
 #ifdef DISSIPATIVE_RANDOM
@@ -434,6 +439,7 @@ struct CalcForceEpEp{
     const PS::F64 tmi = 1.0 / tm;
     const PS::F64 ph = M_PI*0.5;
 
+    
 #ifdef APPROXIMATE_SINSIN
     const PS::F64 c0 = ph*tmi;
     const PS::F64 c1 = (c0 - c0*c0*c0)/6.0;
@@ -444,8 +450,8 @@ struct CalcForceEpEp{
 
 #ifdef DISSIPATIVE_RANDOM
     const PS::F64 sqrtdti = 1.0 / sqrt(dt);
-    const PS::F64 gamma = 1.0;
-    const PS::F64 sigma = 2.0 * temperature * gamma;
+    const PS::F64 sigma_dpd = sqrt(2.0 * temperature * gamma_dpd);
+    static XORShift rn;
 #endif
 
     for(int i=0;i<n_ip;i++){
@@ -464,10 +470,21 @@ struct CalcForceEpEp{
 	const PS::F64 rinv = 1.0 / sqrt(r2);
 	const PS::F64 r2i = rinv*rinv;
 	const PS::F64 r   = r2*rinv;
-
+	// repulsive force
 	force_i += dr * (coef_r*(1.0 - r) * rinv);
 	pot_i += 0.5 * coef_r * (1.0 - r) * (1.0 - r);
+#ifdef DISSIPATIVE_RANDOM
+	// dissipative force
+	const PS::F64vec dv = ep_i[i].vel - ep_j[j].vel;
+	const PS::F64 wij = 1.0 - r2;
+	const PS::F64 fd = gamma_dpd * wij*wij * (dv*dr) * rinv;
+	force_i -= fd * dr;
+	// random force
+	const PS::F64 fr = sigma_dpd * wij * rinv * rn.drand() * rn_max * sqrtdti;
+	force_i += fr * dr;
+#endif
 	if(type_i == 1 || ep_j[j].type == 1) continue;
+	// attractive force and torque
 	const Quaternion  aj = ep_j[j].angle;
 	for(int k=0;k<Npatch;k++){
 	  const PS::F64vec3 ni = Rotate(ai)*patch[k];
@@ -530,16 +547,6 @@ struct CalcForceEpEp{
 	    torque_i += ni ^ g;
 	  }
 	}
-#ifdef DISSIPATIVE_RANDOM
-	// dissipative force
-	const PS::F64vec dv = ep_i[i].vel - ep_kj[j].vel;
-	const PS::F64 wij = 1.0 - r2;
-	const PS::F64 fd = gamma * wij*wij * (dv*dr)*rinv;
-	force_i -= fd * dr;
-	// random force
-	const PS::F64 fr = sigma * wij * rinv * xor128() * sqrtdti;
-	force_i -= fr * dr;
-#endif
       }
       force[i].pot    = pot_i;
       force[i].force  = force_i;
