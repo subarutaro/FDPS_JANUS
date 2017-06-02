@@ -32,14 +32,17 @@ const PS::F64vec3 patch[Npatch] = {PS::F64vec3( 0.0,           1.0, 0.0),
 				   PS::F64vec3( 0.86602540378,-0.5, 0.0),
 				   PS::F64vec3(-0.86602540378,-0.5, 0.0)};
 const PS::F64 coef_r = 396.; // repulsive coefficient
-const PS::F64 coef_a = 220.; // attractive coefficient of patch
+const PS::F64 coef_a[Npatch][Npatch] ={{ 220., 220., 220.},
+				       { 220., 220., 220.},
+				       { 220., 220., 220.}}; // attractive coefficient of patch
 const PS::F64 coef_v = 0.5;  // exponent of f(n,n,r), nu
 
 const PS::F64 Rwall = 1.0; // width of slit or diameter of tube
 const PS::F64 density_wall = 10.0; // density of wall
-const PS::F64 coef_a_wall[2] = {100.,100.}; // attractive coefficient of {patchy, solvent}
 
-const PS::F64 tm = 45.0 / 180.0 * M_PI; // theta_m
+const PS::F64 tm[Npatch] = {45.0 / 180.0 * M_PI,
+			    45.0 / 180.0 * M_PI,
+			    45.0 / 180.0 * M_PI}; // theta_m
 //const PS::F64 solvent_ratio = 0.5;
 const PS::F64 solvent_ratio = 0.0;
 #endif
@@ -49,10 +52,13 @@ const int Npatch = 2;
 const PS::F64vec3 patch[Npatch] = {PS::F64vec3( 0.0, 0.0, 1.0),
 				   PS::F64vec3( 0.0, 0.0,-1.0)};
 const PS::F64 coef_r = 396.;
-const PS::F64 coef_a = 88.;
+const PS::F64 coef_a[Npatch][Npatch] = {{88.,88.},
+					{88.,88.}};
 const PS::F64 coef_v = 0.5;
 
-const PS::F64 tm = 60.0 / 180.0 * M_PI;
+const PS::F64 tm[Npatch] = {60.0 / 180.0 * M_PI,
+			    60.0 / 180.0 * M_PI};
+
 const PS::F64 solvent_ratio = 0.0;
 #endif
 
@@ -61,17 +67,20 @@ const int Npatch = 1;
 const PS::F64vec3 patch[Npatch] = {PS::F64vec3( 0.0, 0.0, 1.0)};
 
 const PS::F64 coef_r = 396.;
-const PS::F64 coef_a = 220.;
+const PS::F64 coef_a[Npatch] = {220.};
 const PS::F64 coef_v = 0.5;
 
-//const PS::F64 tm = 120.0 / 180.0 * M_PI;
-const PS::F64 tm = M_PI;
+const PS::F64 tm[Npatch] = {120.0 / 180.0 * M_PI};
 const PS::F64 solvent_ratio = 0.0;
+#endif
+
+#if (NANOSLIT || NANOTUBE)
+const PS::F64 coef_a_wall[2] = {100.,100.}; // attractive coefficient of {patchy, solvent}
 #endif
 
 // Heat bath parameter
 #ifdef NOSE_HOOVER
-const PS::F64 Q = 30.0;
+const PS::F64 Q = 50.0;
 #endif
 
 #ifdef DISSIPATIVE_RANDOM
@@ -435,11 +444,8 @@ struct CalcForceEpEp{
 		    const EPJ * ep_j,
 		    const PS::S32 n_jp,
 		    Force * force){
-    const PS::F64 cos_tm = cos(tm);
-    const PS::F64 tmi = 1.0 / tm;
     const PS::F64 ph = M_PI*0.5;
 
-    
 #ifdef APPROXIMATE_SINSIN
     const PS::F64 c0 = ph*tmi;
     const PS::F64 c1 = (c0 - c0*c0*c0)/6.0;
@@ -488,17 +494,19 @@ struct CalcForceEpEp{
 	const Quaternion  aj = ep_j[j].angle;
 	for(int k=0;k<Npatch;k++){
 	  const PS::F64vec3 ni = Rotate(ai)*patch[k];
+	  const PS::F64 cos_tm_i = cos(tm[k]);
 	  for(int l=0;l<Npatch;l++){
 	    const PS::F64vec3 nj = Rotate(aj)*patch[l];
 	    const PS::F64 cos_ti = -(ni * dr) * rinv;
 	    const PS::F64 cos_tj =  (nj * dr) * rinv;
+	    const PS::F64 cos_tm_j = cos(tm[l]);
 
-	    if(cos_ti < cos_tm || cos_tj < cos_tm) continue;
+	    if(cos_ti < cos_tm_i || cos_tj < cos_tm_j) continue;
 	    const PS::F64 ti = acos(cos_ti);
 	    const PS::F64 tj = acos(cos_tj);
 
-	    const PS::F64 cos_phtitm = cos(ph*ti*tmi);
-	    const PS::F64 cos_phtjtm = cos(ph*tj*tmi);
+	    const PS::F64 cos_phtitm = cos(ph*ti/tm[k]);
+	    const PS::F64 cos_phtjtm = cos(ph*tj/tm[l]);
 
 	    const PS::F64 ff = cos_phtitm * cos_phtjtm;
 	    const PS::F64 fv  = (ff==0.0) ? 0.0 : powf(ff, coef_v);
@@ -510,7 +518,7 @@ struct CalcForceEpEp{
 #ifdef APPROXIMATE_SINSIN
 	    PS::F64 dtidcossin;
 	    if(ti > LOWEST_LIMIT)
-	      dtidcossin = - sin(ph*ti*tmi) / sin(ti);
+	      dtidcossin = - sin(ph*ti/tm[k]) / sin(ti);
 	    else{
 	      const PS::F64 ti2 = ti*ti;
 	      dtidcossin = -(c0 + ti2 * (c1 + ti2 * (c2 + ti2 * (c3 + ti2*c4))));
@@ -518,7 +526,7 @@ struct CalcForceEpEp{
 
 	    PS::F64 dtjdcossin;
 	    if(tj > LOWEST_LIMIT)
-	      dtjdcossin = - sin(ph*tj*tmi) / sin(tj);
+	      dtjdcossin = - sin(ph*tj/tm[l]) / sin(tj);
 	    else{
 	      const PS::F64 tj2 = tj*tj;
 	      dtjdcossin = -(c0 + tj2 * (c1 + tj2 * (c2 + tj2 * ( c3 + tj2*c4))));
@@ -526,23 +534,23 @@ struct CalcForceEpEp{
 #else
 	    PS::F64 dtidcossin;
 	    if(cos_ti*cos_ti != 1.0)
-	      dtidcossin = - sin(ph*ti*tmi) / sqrt(1.0 - cos_ti*cos_ti);
+	      dtidcossin = - sin(ph*ti/tm[k]) / sqrt(1.0 - cos_ti*cos_ti);
 	    else
-	      dtidcossin = - ph*tmi;
+	      dtidcossin = - ph/tm[k];
 
 	    PS::F64 dtjdcossin;
 	    if(cos_tj*cos_tj != 1.0)
-	      dtjdcossin = - sin(ph*tj*tmi) / sqrt(1.0 - cos_tj*cos_tj);
+	      dtjdcossin = - sin(ph*tj/tm[l]) / sqrt(1.0 - cos_tj*cos_tj);
 	    else
-	      dtjdcossin = - ph*tmi;
+	      dtjdcossin = - ph/tm[l];
 #endif
 	    const PS::F64 tmpi = dtidcossin * cos_phtjtm;
 	    const PS::F64 tmpj = dtjdcossin * cos_phtitm;
 
-	    pot_i   -= 0.5*fv*coef_a*(r - r2);
-	    force_i += (coef_a * fv * (0.5 - r)*rinv)*dr;
-	    force_i -= (0.5*coef_a * (r - r2) * coef_v * fvi * ph * tmi) * (tmpi*dcostidr + tmpj*dcostjdr);
-	    const PS::F64 ttmp = 0.5*ph*coef_a*tmi*(1.0 - r)*coef_v*fvi*tmpi;
+	    pot_i   -= 0.5*fv*coef_a[k][l]*(r - r2);
+	    force_i += (coef_a[k][l] * fv * (0.5 - r)*rinv)*dr;
+	    force_i -= (0.5*coef_a[k][l] * (r - r2) * coef_v * fvi * ph) * (tmpi*dcostidr/tm[k] + tmpj*dcostjdr/tm[l]);
+	    const PS::F64 ttmp = 0.5*ph*coef_a[k][l]/tm[k]*(1.0 - r)*coef_v*fvi*tmpi;
 	    const PS::F64vec g = ttmp * dr;
 	    torque_i += ni ^ g;
 	  }
