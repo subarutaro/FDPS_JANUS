@@ -37,9 +37,6 @@ const PS::F64 coef_a[Npatch][Npatch] ={{ 220., 220., 220.},
 				       { 220., 220., 220.}}; // attractive coefficient of patch
 const PS::F64 coef_v = 0.5;  // exponent of f(n,n,r), nu
 
-const PS::F64 Rwall = 1.0; // width of slit or diameter of tube
-const PS::F64 density_wall = 10.0; // density of wall
-
 const PS::F64 tm[Npatch] = {45.0 / 180.0 * M_PI,
 			    45.0 / 180.0 * M_PI,
 			    45.0 / 180.0 * M_PI}; // theta_m
@@ -75,6 +72,8 @@ const PS::F64 solvent_ratio = 0.0;
 #endif
 
 #if (NANOSLIT || NANOTUBE)
+const PS::F64 Rwall = 1.0; // width of slit or diameter of tube
+const PS::F64 density_wall = 10.0; // density of wall
 const PS::F64 coef_a_wall[2] = {100.,100.}; // attractive coefficient of {patchy, solvent}
 #endif
 
@@ -695,7 +694,7 @@ void MakePlane(const PS::S32 n_tot,
   //static const double PI = atan(1.0) * 4.0;
   PS::MTTS mt;
   double cell_size = sqrt((double)n_tot/density);
-  printf("%d boxdh = %lf\n",PS::Comm::getRank(),cell_size*0.5);
+  fprintf(stderr,"%d boxdh = %lf\n",PS::Comm::getRank(),cell_size*0.5);
   int nunit = 1;
   while(nunit*nunit < n_tot) nunit++;
   if (n_tot != nunit*nunit){
@@ -863,10 +862,8 @@ void SetParticles(Tpsys & psys,
   if(n_loc%n_proc > rank) n_loc++;
 
   psys.setNumberOfParticleLocal(n_loc);
-  printf("rank %d: n_proc = %d, n_loc = %d\n",rank,n_proc,n_loc);
   for(int i=0; i<n_loc; i++){
     const int id = i + i_h;
-    printf("id = %d < n_tot(%d)\n",id,n_tot);
     //assert(id < n_tot);
     psys[i].mass   = mass[id];
     psys[i].pos    = pos[id];
@@ -878,7 +875,6 @@ void SetParticles(Tpsys & psys,
     psys[i].search_radius = 3.0;
   }
   const PS::S32 n_solvent = (PS::S32)(n_loc * solvent_ratio);
-  std::cout << "n_solvent is " << n_solvent << std::endl;
   int n = 0;
   while(n<n_solvent){
     const PS::S32 pivot = rand()%n_loc;
@@ -924,7 +920,6 @@ void SetParticles(Tpsys & psys,
       psys[i].search_radius = 3.0;
     }
     const PS::S32 n_solvent = (PS::S32)(n_tot * solvent_ratio);
-    std::cout << "n_solvent is " << n_solvent << std::endl;
     int n = 0;
     while(n<n_solvent){
       const PS::S32 pivot = rand()%n_tot;
@@ -1188,6 +1183,7 @@ int main(int argc, char *argv[]){
       std::cerr<<"D: time step for diag(default: 100)"<<std::endl;
       std::cerr<<"e: number of steps for equilibration(default: 1000)"<<std::endl;
       std::cerr<<"o: dir name of output (default: ./result)"<<std::endl;
+      std::cerr<<"i: checkpoint file name"<<std::endl;
       std::cerr<<"t: time step (default: 0.0001)"<<std::endl;
       std::cerr<<"n: n_group_limit (default: 64.0)"<<std::endl;
       return 0;
@@ -1231,29 +1227,23 @@ int main(int argc, char *argv[]){
     fout_tcal.open(sout_tcal);
   }
 
-  if(PS::Comm::getRank()==0) fprintf(stderr,"initializing particle system ...\n");
   PS::ParticleSystem<FP> system_janus;
   system_janus.initialize();
-  if(PS::Comm::getRank()==0) fprintf(stderr,"particle system is initialized!\n");
 
   PS::S32 n_grav_glb = n_tot;
   if(input_file == ""){
     SetParticles(system_janus, n_tot, density, temperature);
-    MPI_Barrier(MPI_COMM_WORLD);
-    if(PS::Comm::getRank()==0) fprintf(stderr,"Particles are generated!\n");
+    //if(PS::Comm::getRank()==0) fprintf(stderr,"Particles are generated!\n");
   }else{
     system_janus.setNumberOfParticleLocal(n_tot);
     BinaryHeader header(n_tot);
     system_janus.readParticleBinary(input_file.c_str(),header);
-    if(PS::Comm::getRank()==0) fprintf(stderr,"Particles are read from %s !\n",input_file.c_str());
-    fprintf(stderr,"# of local particles is %d\n",system_janus.getNumberOfParticleLocal());
+    if(PS::Comm::getRank()==0) fprintf(stderr,"Particles are read from %s!\n",input_file.c_str());
   }
 
   const PS::F64 coef_ema = 0.3;
   PS::DomainInfo dinfo;
   dinfo.initialize(coef_ema);
-  MPI_Barrier(MPI_COMM_WORLD);
-  if(PS::Comm::getRank()==0) fprintf(stderr,"domain info is initialized!\n");
 
 #ifdef NANOSLIT
   dinfo.setBoundaryCondition(PS::BOUNDARY_CONDITION_PERIODIC_XY);
@@ -1270,11 +1260,7 @@ int main(int argc, char *argv[]){
 #endif
   dinfo.collectSampleParticle(system_janus);
   dinfo.decomposeDomain();
-  MPI_Barrier(MPI_COMM_WORLD);
-  if(PS::Comm::getRank()==0) fprintf(stderr,"domain is decomposed!\n");
   system_janus.exchangeParticle(dinfo);
-  MPI_Barrier(MPI_COMM_WORLD);
-  if(PS::Comm::getRank()==0) fprintf(stderr,"first exchange of particles\n");
 
   //PS::S32 n_grav_loc = system_janus.getNumberOfParticleLocal();
   PS::TreeForForceShort<Force, EPI, EPJ>::Scatter tree_janus;
@@ -1284,12 +1270,11 @@ int main(int argc, char *argv[]){
 						    dt,temperature
 #endif
 						    ),  system_janus, dinfo);
-  if(PS::Comm::getRank()==0) fprintf(stderr,"initial force is calculated\n");
 
   PS::F64 Epot0, Etra0, Erot0, Etot0, Epot1, Etra1, Erot1, Etot1;
   ScaleVelocity(system_janus,temperature);
   CalcEnergy(system_janus, Etot0, Etra0, Erot0, Epot0);
-  if(PS::Comm::getRank() == 0) printf("Etot = %lf, Epot = %lf, Etra = %lf, Erot = %lf\n",Etot0,Epot0,Etra0,Erot0);
+  //if(PS::Comm::getRank() == 0) printf("Etot = %lf, Epot = %lf, Etra = %lf, Erot = %lf\n",Etot0,Epot0,Etra0,Erot0);
 
   PS::S32 snp_id = 0;
   PS::S32 time_snp = 0;
@@ -1328,7 +1313,7 @@ int main(int argc, char *argv[]){
     }
     if(!isInitialized && s == 0){
       CalcEnergy(system_janus, Etot0, Etra0, Erot0, Epot0);
-      if(PS::Comm::getRank() == 0) printf("Etot0 = %lf, Epot0 = %lf, Etra0 = %lf, Erot0 = %lf\n",Etot0,Epot0,Etra0,Erot0);
+      //if(PS::Comm::getRank() == 0) fprintf(stderr,"Etot0 = %lf, Epot0 = %lf, Etra0 = %lf, Erot0 = %lf\n",Etot0,Epot0,Etra0,Erot0);
       isInitialized = true;
     }
     for(int i=0;i<n_loc;i++){
@@ -1383,12 +1368,16 @@ int main(int argc, char *argv[]){
 	Etot1 += Etstat;
 
 	fout_eng<<time_sys<<"   "<< " " << Epot1 << " " << Etra1 << " " << Erot1 << " " << Etstat << " " << (Etot1-Etot0)/Etot0<<std::endl;
+	/*
 	fprintf(stderr, "%10.7f %lf %lf %lf %lf %+e\n",
 		time_sys, Epot1, Etra1, Erot1, Etstat, (Etot1 - Etot0) / Etot0);
+	//*/
 #else
 	fout_eng<<time_sys<<"   "<< " " << Epot1 << " " << Etra1 << " " << Erot1 << " " <<(Etot1-Etot0)/Etot0<<std::endl;
+	/*
 	fprintf(stderr, "%10.7f %lf %lf %lf %+e\n",
 		time_sys, Epot1, Etra1, Erot1, (Etot1 - Etot0) / Etot0);
+	//*/
 #endif
 	time_diag += nstep_diag;
       }
