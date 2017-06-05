@@ -228,11 +228,25 @@ PS::F64mat4 S(const T a){
 		     a.w, a.z,-a.y, a.x);
 }
 
-class FileHeader{
+class BinaryHeader{
+public:
+  PS::S32 n_ptcl;
+  BinaryHeader(const PS::S32 n_ptcl_) : n_ptcl(n_ptcl_){}
+
+  void writeBinary(FILE* fp) const {
+    fwrite(&n_ptcl,sizeof(PS::S32),1,fp);
+  }
+  PS::S32 readBinary(FILE* fp){
+    fread(&n_ptcl,sizeof(PS::S32),1,fp);
+    return n_ptcl;
+  }
+};
+
+class CDVHeader{
 public:
   PS::F64vec s,e;
-
-  FileHeader(PS::F64vec _s,PS::F64vec _e) : s(_s),e(_e) {}
+  CDVHeader(){}
+  CDVHeader(PS::F64vec _s,PS::F64vec _e) : s(_s),e(_e) {}
   PS::S32 readAscii(FILE * fp){
     return 0;
   }
@@ -290,6 +304,7 @@ public:
     pot    = f.pot;
   }
 
+  // writeXXX must be a const member function
   void writeAscii(FILE* fp) const {
     fprintf(fp, "%d %d %lf %lf %lf %lf %lf %lf %lf\n",
 	    (Npatch+1)*id, type, pos.x, pos.y, pos.z, angle.x, angle.y, angle.z, angle.w);
@@ -303,6 +318,13 @@ public:
   void readAscii(FILE* fp){
     fscanf(fp, "%d %d %lf %lf %lf\n",
 	   &id, &type, &pos.x, &pos.y, &pos.z);
+  }
+
+  void writeBinary(FILE* fp) const {
+    fwrite(this,sizeof(FP),1,fp);
+  }
+  void readBinary(FILE* fp){
+    fread(this,sizeof(FP),1,fp);
   }
 
   Quaternion RichardsonMethod(const Quaternion& angle,const PS::F64vec3& angvel,const PS::F64& dth){
@@ -685,11 +707,12 @@ void MakePlane(const long long int n_tot,
 
   PS::MTTS mt;
   double cell_size = sqrt((double)n_tot/density);
+  printf("%d boxdh = %lf\n",PS::Comm::getRank(),cell_size*0.5);
   int nunit = 1;
   while(nunit*nunit < n_tot) nunit++;
   if (n_tot != nunit*nunit){
     std::cerr << "MakeFaceCubicCenter: n_tot and nunit^2 must be the same. "
-	      << n_tot << "!= " << 4*nunit*nunit*nunit <<std::endl;
+	      << n_tot << "!= " << nunit*nunit <<std::endl;
     PS::Abort();
   }
   mt.init_genrand(PS::Comm::getRank()*PS::Comm::getNumberOfThread()+PS::Comm::getThreadNum());
@@ -740,6 +763,9 @@ void MakePlane(const long long int n_tot,
     if(pos[i].y >   0.5*cell_size) pos[i].y -= cell_size;
     if(pos[i].x <= -0.5*cell_size) pos[i].x += cell_size;
     if(pos[i].y <= -0.5*cell_size) pos[i].y += cell_size;
+
+    assert(-0.5*cell_size < pos[i].x && pos[i].x <= 0.5*cell_size);
+    assert(-0.5*cell_size < pos[i].y && pos[i].y <= 0.5*cell_size);
   }
 
   PS::F64vec cm_vel = 0.0;
@@ -828,10 +854,10 @@ void MakeChain(const long long int n_tot,
 
 
 template<class Tpsys>
-void SetParticlesFCC(Tpsys & psys,
-		     const PS::S32 n_tot,
-		     const double density,
-		     const double temperature){
+void SetParticles(Tpsys & psys,
+		  const PS::S32 n_tot,
+		  const double density,
+		  const double temperature){
   PS::F64 * mass;
   PS::F64vec * pos;
   PS::F64vec * vel;
@@ -888,17 +914,25 @@ void SetParticlesFCC(Tpsys & psys,
 
 template<class Tpsys>
 void RemoveTotalMomentum(Tpsys &system){
-#ifdef PARTICLE_SIMULATOR_MPI_PARALLEL
-  printf("RemoveTotalMomentum is under construct for MPI_PARALLEL!");
-  PS::Abort();
-#endif
   const PS::S32 n_loc = system.getNumberOfParticleLocal();
-  PS::F64vec cm_vel = 0.0;
-  PS::F64  cm_mass = 0.0;
+  PS::F64vec cm_vel_loc = 0.0;
+  PS::F64  cm_mass_loc = 0.0;
   for(int i=0; i<n_loc; i++){
-    cm_vel += system[i].mass * system[i].vel;
-    cm_mass += system[i].mass;
+    cm_vel_loc += system[i].mass * system[i].vel;
+    cm_mass_loc += system[i].mass;
   }
+  PS::F64vec cm_vel=0.0;
+  PS::F64 cm_mass=0.0;
+#ifdef PARTICLE_SIMULATOR_MPI_PARALLEL
+  MPI::COMM_WORLD.Allreduce(&cm_vel_loc.x, &cm_vel.x, 1, PS::GetDataType<PS::F64>(), MPI::SUM);
+  MPI::COMM_WORLD.Allreduce(&cm_vel_loc.y, &cm_vel.y, 1, PS::GetDataType<PS::F64>(), MPI::SUM);
+  MPI::COMM_WORLD.Allreduce(&cm_vel_loc.z, &cm_vel.z, 1, PS::GetDataType<PS::F64>(), MPI::SUM);
+  MPI::COMM_WORLD.Allreduce(&cm_mass_loc, &cm_mass, 1, PS::GetDataType<PS::F64>(), MPI::SUM);
+#else
+  cm_vel = cm_vel_loc;
+  cm_mass = cm_mass_loc;
+#endif
+
   cm_vel /= cm_mass;
   for(int i=0; i<n_loc; i++){
     system[i].vel -= cm_vel;
@@ -1055,11 +1089,13 @@ int main(int argc, char *argv[]){
   PS::S32 nstep_snp = 100;
   PS::S32 nstep_diag = 100;
 
+  std::string input_file = "";
+
   //char sinput[1024];
   char dir_name[1024];
   int c;
   sprintf(dir_name,"./result");
-  while((c=getopt(argc,argv,"o:N:d:T:s:e:S:D:t:c:n:h")) != -1){
+  while((c=getopt(argc,argv,"o:N:d:T:s:e:S:D:t:c:n:i:h")) != -1){
     switch(c){
     case 'o':
       sprintf(dir_name,optarg);
@@ -1100,6 +1136,10 @@ int main(int argc, char *argv[]){
       n_group_limit = atoi(optarg);
       std::cerr<<"n_group_limit="<<n_group_limit<<std::endl;
       break;
+    case 'i':
+      input_file = optarg;
+      std::cerr<<"input_file="<<input_file<<std::endl;
+      break;
     case 'h':
       std::cerr<<"N: n_tot (default: 1000)"<<std::endl;
       std::cerr<<"d: number density (default: 1.05)"<<std::endl;
@@ -1121,6 +1161,7 @@ int main(int argc, char *argv[]){
 #else
   PS::F64 boxdh = 0.5*powf((double)n_tot/density,1./3.);
 #endif
+  if(PS::Comm::getRank()==0) fprintf(stderr, "boxdh = %lf\n",boxdh);
   struct stat st;
   if(stat(dir_name, &st) != 0) {
     PS::S32 rank = PS::Comm::getRank();
@@ -1151,18 +1192,28 @@ int main(int argc, char *argv[]){
     fout_tcal.open(sout_tcal);
   }
 
-  if(PS::Comm::getRank()==0) printf("initializing particle system ...\n");
+  if(PS::Comm::getRank()==0) fprintf(stderr,"initializing particle system ...\n");
   PS::ParticleSystem<FP> system_janus;
   system_janus.initialize();
-  if(PS::Comm::getRank()==0) printf("particle system is initialized!\n");
+  if(PS::Comm::getRank()==0) fprintf(stderr,"particle system is initialized!\n");
 
   PS::S32 n_grav_glb = n_tot;
-  SetParticlesFCC(system_janus, n_tot, density, temperature);
-  if(PS::Comm::getRank()==0) printf("FCC is generated!\n");
+  if(input_file == ""){
+    SetParticles(system_janus, n_tot, density, temperature);
+    if(PS::Comm::getRank()==0) fprintf(stderr,"Particles are generated!\n");
+  }else{
+    system_janus.setNumberOfParticleLocal(n_tot);
+    BinaryHeader header(n_tot);
+    system_janus.readParticleBinary(input_file.c_str(),header);
+    if(PS::Comm::getRank()==0) fprintf(stderr,"Particles are read from %s !\n",input_file.c_str());
+    fprintf(stderr,"# of local particles is %d\n",system_janus.getNumberOfParticleLocal());
+  }
 
   const PS::F64 coef_ema = 0.3;
   PS::DomainInfo dinfo;
   dinfo.initialize(coef_ema);
+  if(PS::Comm::getRank()==0) fprintf(stderr,"domain info is initialized!\n");
+
 #ifdef NANOSLIT
   dinfo.setBoundaryCondition(PS::BOUNDARY_CONDITION_PERIODIC_XY);
   dinfo.setPosRootDomain(PS::F64vec(-boxdh,-boxdh,-Rwall),
@@ -1178,7 +1229,9 @@ int main(int argc, char *argv[]){
 #endif
   dinfo.collectSampleParticle(system_janus);
   dinfo.decomposeDomain();
+  if(PS::Comm::getRank()==0) fprintf(stderr,"domain is decomposed!\n");
   system_janus.exchangeParticle(dinfo);
+  if(PS::Comm::getRank()==0) fprintf(stderr,"first exchange of particles\n");
 
   //PS::S32 n_grav_loc = system_janus.getNumberOfParticleLocal();
   PS::TreeForForceShort<Force, EPI, EPJ>::Scatter tree_janus;
@@ -1188,6 +1241,7 @@ int main(int argc, char *argv[]){
 						    dt,temperature
 #endif
 						    ),  system_janus, dinfo);
+  if(PS::Comm::getRank()==0) fprintf(stderr,"initial force is calculated\n");
 
   PS::F64 Epot0, Etra0, Erot0, Etot0, Epot1, Etra1, Erot1, Etot1;
   ScaleVelocity(system_janus,temperature);
@@ -1217,11 +1271,16 @@ int main(int argc, char *argv[]){
     timer.reset();
     timer.start();
     if(s == time_snp){
-      FileHeader header(PS::F64vec(-boxdh,-boxdh,-boxdh),PS::F64vec(boxdh,boxdh,boxdh));
+      CDVHeader cdvh(PS::F64vec(-boxdh,-boxdh,-boxdh),PS::F64vec(boxdh,boxdh,boxdh));
       char filename[256];
-      sprintf(filename, "%s/%04d.cdv", dir_name, snp_id++);
-      system_janus.writeParticleAscii(filename, header);
+      sprintf(filename, "%s/%05d.cdv", dir_name, snp_id);
+      system_janus.writeParticleAscii(filename, cdvh);
 
+      BinaryHeader bh(n_tot);
+      sprintf(filename,"%s/checkpoint", dir_name);
+      system_janus.writeParticleBinary(filename,bh);
+
+      snp_id++;
       time_snp += nstep_snp;
     }
     if(!isInitialized && s == 0){
