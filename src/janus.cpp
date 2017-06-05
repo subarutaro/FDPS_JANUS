@@ -585,8 +585,8 @@ struct CalcForceEpEp{
   }
 };
 
-void MakeFaceCubicCenter(const long long int n_tot,
-			 double *&mass,
+void MakeFaceCubicCenter(const PS::S32 n_tot,
+			 PS::F64 *&mass,
 			 PS::F64vec *&pos,
 			 PS::F64vec *&vel,
 			 Quaternion *&angle,
@@ -594,12 +594,6 @@ void MakeFaceCubicCenter(const long long int n_tot,
 			 const double density,
 			 const int seed = 0){
   //static const double PI = atan(1.0) * 4.0;
-  mass   = new double[n_tot];
-  pos    = new PS::F64vec3[n_tot];
-  vel    = new PS::F64vec3[n_tot];
-  angle  = new Quaternion[n_tot];
-  angvel = new PS::F64vec3[n_tot];
-
   PS::MTTS mt;
   double cell_size = pow((double)n_tot/density,1./3.);
   int nunit = 1;
@@ -690,21 +684,15 @@ void MakeFaceCubicCenter(const long long int n_tot,
 }
 
 
-void MakePlane(const long long int n_tot,
-	       double *&mass,
-	       PS::F64vec *&pos,
-	       PS::F64vec *&vel,
-	       Quaternion *&angle,
-	       PS::F64vec *&angvel,
+void MakePlane(const PS::S32 n_tot,
+	       PS::F64    * mass,
+	       PS::F64vec * pos,
+	       PS::F64vec * vel,
+	       Quaternion * angle,
+	       PS::F64vec * angvel,
 	       const double density,
 	       const int seed = 0){
   //static const double PI = atan(1.0) * 4.0;
-  mass   = new double[n_tot];
-  pos    = new PS::F64vec3[n_tot];
-  vel    = new PS::F64vec3[n_tot];
-  angle  = new Quaternion[n_tot];
-  angvel = new PS::F64vec3[n_tot];
-
   PS::MTTS mt;
   double cell_size = sqrt((double)n_tot/density);
   printf("%d boxdh = %lf\n",PS::Comm::getRank(),cell_size*0.5);
@@ -780,8 +768,8 @@ void MakePlane(const long long int n_tot,
   }
 }
 
-void MakeChain(const long long int n_tot,
-	       double *&mass,
+void MakeChain(const PS::S32 n_tot,
+	       PS::F64 *&mass,
 	       PS::F64vec *&pos,
 	       PS::F64vec *&vel,
 	       Quaternion *&angle,
@@ -789,12 +777,6 @@ void MakeChain(const long long int n_tot,
 	       const double density,
 	       const int seed = 0){
   //static const double PI = atan(1.0) * 4.0;
-  mass   = new double[n_tot];
-  pos    = new PS::F64vec3[n_tot];
-  vel    = new PS::F64vec3[n_tot];
-  angle  = new Quaternion[n_tot];
-  angvel = new PS::F64vec3[n_tot];
-
   PS::MTTS mt;
   double cell_size = (double)n_tot/density;
   mt.init_genrand(PS::Comm::getRank()*PS::Comm::getNumberOfThread()+PS::Comm::getThreadNum());
@@ -858,11 +840,12 @@ void SetParticles(Tpsys & psys,
 		  const PS::S32 n_tot,
 		  const double density,
 		  const double temperature){
-  PS::F64 * mass;
-  PS::F64vec * pos;
-  PS::F64vec * vel;
-  Quaternion * angle;
-  PS::F64vec * angvel;
+#if 0 // particles are generated on each rank (need bug fix)
+  PS::F64    *mass   = new PS::F64[n_tot];
+  PS::F64vec *pos    = new PS::F64vec[n_tot];
+  PS::F64vec *vel    = new PS::F64vec[n_tot];
+  Quaternion *angle  = new Quaternion[n_tot];
+  PS::F64vec *angvel = new PS::F64vec[n_tot];
 #ifdef NANOSLIT
   MakePlane(n_tot, mass, pos, vel, angle, angvel, density);
 #elif defined NANOTUBE
@@ -873,15 +856,18 @@ void SetParticles(Tpsys & psys,
 
   PS::S32 n_proc = PS::Comm::getNumberOfProc();
   PS::S32 rank = PS::Comm::getRank();
-  printf("rank %d: n_proc = %d\n",rank,n_proc);
 
   PS::S32 n_loc = n_tot / n_proc;
   PS::S32 i_h = n_loc*rank;
   if(n_loc%n_proc > rank) i_h += rank;
   if(n_loc%n_proc > rank) n_loc++;
+
   psys.setNumberOfParticleLocal(n_loc);
+  printf("rank %d: n_proc = %d, n_loc = %d\n",rank,n_proc,n_loc);
   for(int i=0; i<n_loc; i++){
     const int id = i + i_h;
+    printf("id = %d < n_tot(%d)\n",id,n_tot);
+    //assert(id < n_tot);
     psys[i].mass   = mass[id];
     psys[i].pos    = pos[id];
     psys[i].vel    = vel[id];
@@ -895,7 +881,7 @@ void SetParticles(Tpsys & psys,
   std::cout << "n_solvent is " << n_solvent << std::endl;
   int n = 0;
   while(n<n_solvent){
-    PS::S32 pivot = rand()%n_loc;
+    const PS::S32 pivot = rand()%n_loc;
     if(psys[pivot].type == 0){
       psys[pivot].type = 1;
       psys[pivot].angvel = 0.0;
@@ -905,10 +891,63 @@ void SetParticles(Tpsys & psys,
     }
   }
 
-  delete [] mass;
-  delete [] pos;
-  delete [] vel;
+  if(mass   != nullptr) delete [] mass;
+  if(pos    != nullptr) delete [] pos;
+  if(vel    != nullptr) delete [] vel;
+  if(angle  != nullptr) delete [] angle;
+  if(angvel != nullptr) delete [] angvel;
 
+#else // all particles are generated on rank 0
+  if(PS::Comm::getRank() == 0){
+    PS::F64    *mass   = new PS::F64[n_tot];
+    PS::F64vec *pos    = new PS::F64vec[n_tot];
+    PS::F64vec *vel    = new PS::F64vec[n_tot];
+    Quaternion *angle  = new Quaternion[n_tot];
+    PS::F64vec *angvel = new PS::F64vec[n_tot];
+#ifdef NANOSLIT
+    MakePlane(n_tot, mass, pos, vel, angle, angvel, density);
+#elif defined NANOTUBE
+    MakeChain(n_tot, mass, pos, vel, angle, angvel, density);
+#else
+    MakeFaceCubicCenter(n_tot, mass, pos, vel, angle, angvel, density);
+#endif
+
+    psys.setNumberOfParticleLocal(n_tot);
+    for(int i=0; i<n_tot; i++){
+      psys[i].mass   = mass[i];
+      psys[i].pos    = pos[i];
+      psys[i].vel    = vel[i];
+      psys[i].angle  = angle[i];
+      psys[i].angvel = angvel[i];
+      psys[i].id     = i;
+      psys[i].type   = 0;
+      psys[i].search_radius = 3.0;
+    }
+    const PS::S32 n_solvent = (PS::S32)(n_tot * solvent_ratio);
+    std::cout << "n_solvent is " << n_solvent << std::endl;
+    int n = 0;
+    while(n<n_solvent){
+      const PS::S32 pivot = rand()%n_tot;
+      if(psys[pivot].type == 0){
+	psys[pivot].type = 1;
+	psys[pivot].angvel = 0.0;
+	n++;
+
+	//std::cout << n << std::endl;
+      }
+    }
+
+    if(mass   != nullptr) delete [] mass;
+    if(pos    != nullptr) delete [] pos;
+    if(vel    != nullptr) delete [] vel;
+    if(angle  != nullptr) delete [] angle;
+    if(angvel != nullptr) delete [] angvel;
+
+  }else{
+    psys.setNumberOfParticleLocal(0);
+  }
+
+#endif
   ScaleVelocity(psys,temperature);
 }
 
@@ -1200,6 +1239,7 @@ int main(int argc, char *argv[]){
   PS::S32 n_grav_glb = n_tot;
   if(input_file == ""){
     SetParticles(system_janus, n_tot, density, temperature);
+    MPI_Barrier(MPI_COMM_WORLD);
     if(PS::Comm::getRank()==0) fprintf(stderr,"Particles are generated!\n");
   }else{
     system_janus.setNumberOfParticleLocal(n_tot);
@@ -1212,6 +1252,7 @@ int main(int argc, char *argv[]){
   const PS::F64 coef_ema = 0.3;
   PS::DomainInfo dinfo;
   dinfo.initialize(coef_ema);
+  MPI_Barrier(MPI_COMM_WORLD);
   if(PS::Comm::getRank()==0) fprintf(stderr,"domain info is initialized!\n");
 
 #ifdef NANOSLIT
@@ -1229,8 +1270,10 @@ int main(int argc, char *argv[]){
 #endif
   dinfo.collectSampleParticle(system_janus);
   dinfo.decomposeDomain();
+  MPI_Barrier(MPI_COMM_WORLD);
   if(PS::Comm::getRank()==0) fprintf(stderr,"domain is decomposed!\n");
   system_janus.exchangeParticle(dinfo);
+  MPI_Barrier(MPI_COMM_WORLD);
   if(PS::Comm::getRank()==0) fprintf(stderr,"first exchange of particles\n");
 
   //PS::S32 n_grav_loc = system_janus.getNumberOfParticleLocal();
