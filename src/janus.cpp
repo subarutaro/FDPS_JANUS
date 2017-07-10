@@ -10,7 +10,6 @@
 //   -- acc and phi are consistent only for the case of m=1
 // This has been fixed as of Mar 15 2015
 
-
 #include<iostream>
 #include<fstream>
 #include<unistd.h>
@@ -397,6 +396,7 @@ public:
 
 class EPI{
 public:
+  PS::S32 id;
   PS::S32 type;
   PS::F64vec pos;
   Quaternion angle;
@@ -412,11 +412,13 @@ public:
 #endif
     angle = fp.angle;
     type  = fp.type;
+    id = fp.id;
   }
 };
 
 class EPJ{
 public:
+  PS::S32 id;
   PS::S32 type;
   PS::F64vec3 pos;
   Quaternion angle;
@@ -431,6 +433,7 @@ public:
 #endif
     angle = fp.angle;
     type = fp.type;
+    id = fp.id;
     search_radius = fp.search_radius;
   }
   PS::F64 getRSearch() const{
@@ -478,7 +481,8 @@ struct CalcForceEpEp{
 #ifdef DISSIPATIVE_RANDOM
     const PS::F64 sqrtdti = 1.0 / sqrt(dt);
     const PS::F64 sigma_dpd = sqrt(2.0 * temperature * gamma_dpd);
-    static XORShift rn;
+    //static XORShift rn;
+    static TEA rn;
 #endif
 
     for(int i=0;i<n_ip;i++){
@@ -493,7 +497,11 @@ struct CalcForceEpEp{
 	const PS::F64vec3 rj = ep_j[j].pos;
 	const PS::F64vec3 dr = ri - rj;
 	const PS::F64 r2 = dr*dr;
+#ifdef DISSIPATIVE_RANDOM
+	if(r2 > 1.0 || 1e-20f > r2) continue;
+#else
 	if(r2 > 1.0 || r2 == 0.0) continue;
+#endif
 	const PS::F64 rinv = 1.0 / sqrt(r2);
 	const PS::F64 r2i = rinv*rinv;
 	const PS::F64 r   = r2*rinv;
@@ -507,7 +515,8 @@ struct CalcForceEpEp{
 	const PS::F64 fd = gamma_dpd * wij*wij * (dv*dr) * rinv;
 	force_i -= fd * dr;
 	// random force
-	const PS::F64 fr = sigma_dpd * wij * rinv * rn.drand() * rn_max * sqrtdti;
+	const PS::F64 tmp = rn.drand(ep_i[i].vel[0], ep_j[j].vel[0]);
+	const PS::F64 fr = sigma_dpd * wij * tmp * rinv * sqrtdti;
 	force_i += fr * dr;
 #endif
 	if(type_i == 1 || ep_j[j].type == 1) continue;
@@ -1055,6 +1064,23 @@ void CalcKineticEnergy(const Tpsys & system,
 }
 
 template<class Tpsys>
+void CalcMomentum(const Tpsys & system,
+		  PS::F64vec & mom){
+  PS::F64vec mom_loc = 0.0;
+  const PS::S32 nbody = system.getNumberOfParticleLocal();
+  for(PS::S32 i=0; i<nbody; i++){
+    mom_loc += 0.5 * system[i].mass * system[i].vel;
+  }
+#ifdef PARTICLE_SIMULATOR_MPI_PARALLEL
+  MPI::COMM_WORLD.Allreduce(&mom_loc.x, &mom.x, 1, PS::GetDataType<PS::F64>(), MPI::SUM);
+  MPI::COMM_WORLD.Allreduce(&mom_loc.y, &mom.y, 1, PS::GetDataType<PS::F64>(), MPI::SUM);
+  MPI::COMM_WORLD.Allreduce(&mom_loc.z, &mom.z, 1, PS::GetDataType<PS::F64>(), MPI::SUM);
+#else
+  mom = mom_loc;
+#endif
+}
+
+template<class Tpsys>
 void CalcEnergy(const Tpsys & system,
                 PS::F64 & etot,
                 PS::F64 & etra,
@@ -1357,6 +1383,8 @@ int main(int argc, char *argv[]){
     }
 
     CalcEnergy(system_janus, Etot1, Etra1, Erot1, Epot1);
+    PS::F64vec mom;
+    CalcMomentum(system_janus, mom);
     if(s>=0){
       Epot_ave += Epot1;
       Ekin_ave += Etra1 + Erot1;
@@ -1373,7 +1401,15 @@ int main(int argc, char *argv[]){
 		time_sys, Epot1, Etra1, Erot1, Etstat, (Etot1 - Etot0) / Etot0);
 	//*/
 #else
-	fout_eng<<time_sys<<"   "<< " " << Epot1 << " " << Etra1 << " " << Erot1 << " " <<(Etot1-Etot0)/Etot0<<std::endl;
+	fout_eng << " " << time_sys
+		 << " " << Epot1
+		 << " " << Etra1
+		 << " " << Erot1
+		 << " " <<(Etot1-Etot0)/Etot0
+		 << " " << mom.x
+		 << " " << mom.y
+		 << " " << mom.z
+		 <<std::endl;
 	/*
 	fprintf(stderr, "%10.7f %lf %lf %lf %+e\n",
 		time_sys, Epot1, Etra1, Erot1, (Etot1 - Etot0) / Etot0);
