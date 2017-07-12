@@ -349,16 +349,18 @@ public:
     if(type != 1) angvel += torque * dth;
 
     pos += vel * dt;
+    // range must be [-lh,lh)
 #ifndef NANOTUBE
-    if(pos.x >   lh) pos.x -= 2.0*lh;
-    if(pos.x <= -lh) pos.x += 2.0*lh;
-    if(pos.y >   lh) pos.y -= 2.0*lh;
-    if(pos.y <= -lh) pos.y += 2.0*lh;
+    if(pos.x >= lh) pos.x -= 2.0*lh;
+    if(pos.y >= lh) pos.y -= 2.0*lh;
+    if(pos.x < -lh) pos.x += 2.0*lh;
+    if(pos.y < -lh) pos.y += 2.0*lh;
 #endif
 #ifndef NANOSLIT
-    if(pos.z >   lh) pos.z -= 2.0*lh;
-    if(pos.z <= -lh) pos.z += 2.0*lh;
+    if(pos.z >= lh) pos.z -= 2.0*lh;
+    if(pos.z < -lh) pos.z += 2.0*lh;
 #endif
+
     if(type != 1) angle = RichardsonMethod(angle,angvel,dth);
   }
 
@@ -375,15 +377,14 @@ public:
 
     if(Rup <= 1.0)
       force.z -= 0.16666666666 * M_PI * density_wall * coef_a_wall[type]
-	* (1 -2.0 * Rup + 2.0 * Rup*Rup*Rup - Rup*Rup*Rup*Rup) * pos.z / fabs(pos.z);
+	* (1 -2.0 * Rup + 2.0 * Rup*Rup*Rup - Rup*Rup*Rup*Rup);
     if(Rdw <= 1.0)
-      force.z -= 0.16666666666 * M_PI * density_wall * coef_a_wall[type]
-	* (1 -2.0 * Rdw + 2.0 * Rdw*Rdw*Rdw - Rdw*Rdw*Rdw*Rdw) * pos.z / fabs(pos.z);
+      force.z += 0.16666666666 * M_PI * density_wall * coef_a_wall[type]
+	* (1 -2.0 * Rdw + 2.0 * Rdw*Rdw*Rdw - Rdw*Rdw*Rdw*Rdw);
 #endif
 
 #ifdef NANOTUBE
   const PS::F64 R = 0.5*Rwall - sqrt(pos.x*pos.x + pos.y*pos.y);
-
 
   if(R <= 1.0){
     const PS::F64 ftmp = 0.16666666666 * M_PI * density_wall * coef_a_wall[type] * (1 -2.0 * R + 2.0 * R*R*R - R*R*R*R)/R;
@@ -671,12 +672,12 @@ void MakeFaceCubicCenter(const PS::S32 n_tot,
     pos[i].y -= 0.5*cell_size;
     pos[i].z -= 0.5*cell_size;
 
-    if(pos[i].x >   0.5*cell_size) pos[i].x -= cell_size;
-    if(pos[i].y >   0.5*cell_size) pos[i].y -= cell_size;
-    if(pos[i].z >   0.5*cell_size) pos[i].z -= cell_size;
-    if(pos[i].x <= -0.5*cell_size) pos[i].x += cell_size;
-    if(pos[i].y <= -0.5*cell_size) pos[i].y += cell_size;
-    if(pos[i].z <= -0.5*cell_size) pos[i].z += cell_size;
+    if(pos[i].x >= 0.5*cell_size) pos[i].x -= cell_size;
+    if(pos[i].y >= 0.5*cell_size) pos[i].y -= cell_size;
+    if(pos[i].z >= 0.5*cell_size) pos[i].z -= cell_size;
+    if(pos[i].x < -0.5*cell_size) pos[i].x += cell_size;
+    if(pos[i].y < -0.5*cell_size) pos[i].y += cell_size;
+    if(pos[i].z < -0.5*cell_size) pos[i].z += cell_size;
   }
 
   PS::F64vec cm_vel = 0.0;
@@ -755,13 +756,13 @@ void MakePlane(const PS::S32 n_tot,
     pos[i].x -= 0.5*cell_size;
     pos[i].y -= 0.5*cell_size;
 
-    if(pos[i].x >   0.5*cell_size) pos[i].x -= cell_size;
-    if(pos[i].y >   0.5*cell_size) pos[i].y -= cell_size;
-    if(pos[i].x <= -0.5*cell_size) pos[i].x += cell_size;
-    if(pos[i].y <= -0.5*cell_size) pos[i].y += cell_size;
+    if(pos[i].x >=  0.5*cell_size) pos[i].x -= cell_size;
+    if(pos[i].y >=  0.5*cell_size) pos[i].y -= cell_size;
+    if(pos[i].x <  -0.5*cell_size) pos[i].x += cell_size;
+    if(pos[i].y <  -0.5*cell_size) pos[i].y += cell_size;
 
-    assert(-0.5*cell_size < pos[i].x && pos[i].x <= 0.5*cell_size);
-    assert(-0.5*cell_size < pos[i].y && pos[i].y <= 0.5*cell_size);
+    assert(-0.5*cell_size <= pos[i].x && pos[i].x < 0.5*cell_size);
+    assert(-0.5*cell_size <= pos[i].y && pos[i].y < 0.5*cell_size);
   }
 
   PS::F64vec cm_vel = 0.0;
@@ -1261,7 +1262,6 @@ int main(int argc, char *argv[]){
     SetParticles(system_janus, n_tot, density, temperature);
     //if(PS::Comm::getRank()==0) fprintf(stderr,"Particles are generated!\n");
   }else{
-    system_janus.setNumberOfParticleLocal(n_tot);
     BinaryHeader header(n_tot);
     system_janus.readParticleBinary(input_file.c_str(),header);
     if(PS::Comm::getRank()==0) fprintf(stderr,"Particles are read from %s!\n",input_file.c_str());
@@ -1287,8 +1287,6 @@ int main(int argc, char *argv[]){
   dinfo.collectSampleParticle(system_janus);
   dinfo.decomposeDomain();
   system_janus.exchangeParticle(dinfo);
-
-  //PS::S32 n_grav_loc = system_janus.getNumberOfParticleLocal();
   PS::TreeForForceShort<Force, EPI, EPJ>::Scatter tree_janus;
   tree_janus.initialize(n_grav_glb, theta, n_leaf_limit, n_group_limit);
   tree_janus.calcForceAllAndWriteBack(CalcForceEpEp(
@@ -1332,6 +1330,7 @@ int main(int argc, char *argv[]){
 
       BinaryHeader bh(n_tot);
       sprintf(filename,"%s/checkpoint", dir_name);
+
       system_janus.writeParticleBinary(filename,bh);
 
       snp_id++;
