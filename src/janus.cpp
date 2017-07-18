@@ -24,6 +24,10 @@
 
 #define LOWEST_LIMIT 1e-4
 
+#ifdef SMALL_SOLVENT
+const PS::F64 dj = 0.7;
+#endif
+
 // patch informations
 #if 1
 const int Npatch = 3;
@@ -39,8 +43,6 @@ const PS::F64 coef_v = 0.5;  // exponent of f(n,n,r), nu
 const PS::F64 tm[Npatch] = {45.0 / 180.0 * M_PI,
 			    45.0 / 180.0 * M_PI,
 			    45.0 / 180.0 * M_PI}; // theta_m
-//const PS::F64 solvent_ratio = 0.5;
-const PS::F64 solvent_ratio = 0.0;
 #endif
 
 #if 0
@@ -54,8 +56,6 @@ const PS::F64 coef_v = 0.5;
 
 const PS::F64 tm[Npatch] = {60.0 / 180.0 * M_PI,
 			    60.0 / 180.0 * M_PI};
-
-const PS::F64 solvent_ratio = 0.0;
 #endif
 
 #if 0
@@ -63,11 +63,10 @@ const int Npatch = 1;
 const PS::F64vec3 patch[Npatch] = {PS::F64vec3( 0.0, 0.0, 1.0)};
 
 const PS::F64 coef_r = 396.;
-const PS::F64 coef_a[Npatch] = {220.};
+const PS::F64 coef_a[Npatch][Npatch] = {{220.}};
 const PS::F64 coef_v = 0.5;
 
 const PS::F64 tm[Npatch] = {120.0 / 180.0 * M_PI};
-const PS::F64 solvent_ratio = 0.0;
 #endif
 
 #if (NANOSLIT || NANOTUBE)
@@ -260,8 +259,8 @@ public:
 	    s.x,s.y,s.z, e.x,e.y,e.z);
 #endif
     fprintf(fp, "'r0=0.35\n");
-    fprintf(fp, "'r1=0.2\n");
-    fprintf(fp, "'r2=0.1\n");
+    fprintf(fp, "'r1=0.20\n");
+    fprintf(fp, "'r2=0.1 c2=(256,256,0)\n");
   }
 };
 
@@ -290,6 +289,9 @@ public:
   PS::F64vec3 angvel;
   PS::F64vec3 torque;
 
+#ifdef DISSIPATIVE_RANDOM
+  PS::S32 seed;
+#endif
   PS::F64 pot;
   PS::F64 search_radius;
   PS::F64 getRsearch() const {
@@ -305,12 +307,12 @@ public:
   // writeXXX must be a const member function
   void writeAscii(FILE* fp) const {
     fprintf(fp, "%d %d %lf %lf %lf %lf %lf %lf %lf\n",
-	    (Npatch+1)*id, type, pos.x, pos.y, pos.z, angle.x, angle.y, angle.z, angle.w);
+	    id, type, pos.x, pos.y, pos.z, angle.x, angle.y, angle.z, angle.w);
     if(type != 1)
       for(int i=0;i<Npatch;i++){
 	const PS::F64vec n = 0.2 * (Rotate(angle)*patch[i]);
 	fprintf(fp, "%d %d %lf %lf %lf\n",
-		(Npatch+1)*id+i+1, 2, pos.x+n.x, pos.y+n.y, pos.z+n.z);
+		id, 2, pos.x+n.x, pos.y+n.y, pos.z+n.z);
       }
   }
   void readAscii(FILE* fp){
@@ -403,6 +405,7 @@ public:
   Quaternion angle;
 #ifdef DISSIPATIVE_RANDOM
   PS::F64vec vel;
+  PS::S32 seed;
 #endif
 
   PS::F64vec getPos() const { return pos;}
@@ -410,6 +413,7 @@ public:
     pos = fp.pos;
 #ifdef DISSIPATIVE_RANDOM
     vel = fp.vel;
+    seed = fp.seed;
 #endif
     angle = fp.angle;
     type  = fp.type;
@@ -425,12 +429,14 @@ public:
   Quaternion angle;
 #ifdef DISSIPATIVE_RANDOM
   PS::F64vec vel;
+  PS::S32 seed;
 #endif
   PS::F64 search_radius;
   void copyFromFP(const FP & fp){ 
     pos = fp.pos;
 #ifdef DISSIPATIVE_RANDOM
     vel = fp.vel;
+    seed = fp.seed;
 #endif
     angle = fp.angle;
     type = fp.type;
@@ -486,6 +492,9 @@ struct CalcForceEpEp{
     static TEA rn;
 #endif
 
+#ifdef SMALL_SOLVENT
+    const PS::F64 dij[2][2] = {{1.0,(1.0+dj)*0.5},{(1.0+dj)*0.5,dj}};
+#endif    
     for(int i=0;i<n_ip;i++){
       const PS::F64vec3 ri = ep_i[i].pos;
       const Quaternion  ai = ep_i[i].angle;
@@ -499,6 +508,7 @@ struct CalcForceEpEp{
 	const PS::F64vec3 dr = ri - rj;
 	const PS::F64 r2 = dr*dr;
 #ifdef DISSIPATIVE_RANDOM
+	const PS::S32 seed_i = ep_i[i].seed;
 	if(r2 > 1.0 || 1e-20f > r2) continue;
 #else
 	if(r2 > 1.0 || r2 == 0.0) continue;
@@ -507,8 +517,14 @@ struct CalcForceEpEp{
 	const PS::F64 r2i = rinv*rinv;
 	const PS::F64 r   = r2*rinv;
 	// repulsive force
+#ifdef SMALL_SOLVENT
+	force_i += dr * (coef_r*(dij[type_i][ep_j[j].type] - r) * rinv);
+	pot_i += 0.5 * coef_r * (dij[type_i][ep_j[j].type] - r) * (dij[type_i][ep_j[j].type] - r);
+#else
 	force_i += dr * (coef_r*(1.0 - r) * rinv);
 	pot_i += 0.5 * coef_r * (1.0 - r) * (1.0 - r);
+#endif
+	
 #ifdef DISSIPATIVE_RANDOM
 	// dissipative force
 	const PS::F64vec dv = ep_i[i].vel - ep_j[j].vel;
@@ -516,7 +532,12 @@ struct CalcForceEpEp{
 	const PS::F64 fd = gamma_dpd * wij*wij * (dv*dr) * rinv;
 	force_i -= fd * dr;
 	// random force
-	const PS::F64 tmp = rn.drand(ep_i[i].vel[0], ep_j[j].vel[0]);
+#if 0
+	const PS::F64 tmp = rn.drand(seed_i, ep_j[j].seed);
+#else
+	const PS::F64 tmp = rn.drand((float)ep_i[i].vel.x,(float)ep_j[j].vel.x);
+#endif
+	//if(ep_i[i].id==0) printf("%lf\n",tmp);
 	const PS::F64 fr = sigma_dpd * wij * tmp * rinv * sqrtdti;
 	force_i += fr * dr;
 #endif
@@ -848,7 +869,8 @@ template<class Tpsys>
 void SetParticles(Tpsys & psys,
 		  const PS::S32 n_tot,
 		  const double density,
-		  const double temperature){
+		  const double temperature,
+		  const double solvent_ratio){
 #if 0 // particles are generated on each rank (need bug fix)
   PS::F64    *mass   = new PS::F64[n_tot];
   PS::F64vec *pos    = new PS::F64vec[n_tot];
@@ -1141,13 +1163,14 @@ int main(int argc, char *argv[]){
   long long int n_tot = 256;
   PS::F64 density     = 1.05;
   PS::F64 temperature = 0.8;
+  PS::F64 solvent_ratio = 0.0;
 
   PS::F64 dt = 0.0001;
 
   PS::S32 n_group_limit = 64;
-  PS::S32 nstep     = 1000;
-  PS::S32 nstep_eq  = 1000;
-  PS::S32 nstep_snp = 100;
+  PS::S32 nstep      = 1000;
+  PS::S32 nstep_eq   = 1000;
+  PS::S32 nstep_snp  = 100;
   PS::S32 nstep_diag = 100;
 
   std::string input_file = "";
@@ -1156,7 +1179,7 @@ int main(int argc, char *argv[]){
   char dir_name[1024];
   int c;
   sprintf(dir_name,"./result");
-  while((c=getopt(argc,argv,"o:N:d:T:s:e:S:D:t:c:n:i:h")) != -1){
+  while((c=getopt(argc,argv,"o:N:d:T:s:e:S:D:t:c:r:n:i:h")) != -1){
     switch(c){
     case 'o':
       sprintf(dir_name,optarg);
@@ -1193,6 +1216,10 @@ int main(int argc, char *argv[]){
       dt = atof(optarg);
       std::cerr<<"dt="<<dt<<std::endl;
       break;
+    case 'r':
+      solvent_ratio = atof(optarg);
+      std::cerr<<"solvent_ratio="<<solvent_ratio<<std::endl;
+      break;
     case 'n':
       n_group_limit = atoi(optarg);
       std::cerr<<"n_group_limit="<<n_group_limit<<std::endl;
@@ -1209,6 +1236,7 @@ int main(int argc, char *argv[]){
       std::cerr<<"S: time step for snapshot(default: 100)"<<std::endl;
       std::cerr<<"D: time step for diag(default: 100)"<<std::endl;
       std::cerr<<"e: number of steps for equilibration(default: 1000)"<<std::endl;
+      std::cerr<<"r: ratio of sovent (default: 0.0)"<<std::endl;
       std::cerr<<"o: dir name of output (default: ./result)"<<std::endl;
       std::cerr<<"i: checkpoint file name"<<std::endl;
       std::cerr<<"t: time step (default: 0.0001)"<<std::endl;
@@ -1259,7 +1287,7 @@ int main(int argc, char *argv[]){
 
   PS::S32 n_grav_glb = n_tot;
   if(input_file == ""){
-    SetParticles(system_janus, n_tot, density, temperature);
+    SetParticles(system_janus, n_tot, density, temperature,solvent_ratio);
     //if(PS::Comm::getRank()==0) fprintf(stderr,"Particles are generated!\n");
   }else{
     BinaryHeader header(n_tot);
@@ -1289,6 +1317,9 @@ int main(int argc, char *argv[]){
   system_janus.exchangeParticle(dinfo);
   PS::TreeForForceShort<Force, EPI, EPJ>::Scatter tree_janus;
   tree_janus.initialize(n_grav_glb, theta, n_leaf_limit, n_group_limit);
+#ifdef DISSIPATIVE_RANDOM
+  for(int i=0;i<system_janus.getNumberOfParticleLocal();i++) system_janus[i].seed = rand();
+#endif
   tree_janus.calcForceAllAndWriteBack(CalcForceEpEp(
 #ifdef DISSIPATIVE_RANDOM
 						    dt,temperature
@@ -1355,6 +1386,9 @@ int main(int argc, char *argv[]){
     system_janus.exchangeParticle(dinfo);
     n_loc = system_janus.getNumberOfParticleLocal();
 
+#ifdef DISSIPATIVE_RANDOM
+    for(int i=0;i<system_janus.getNumberOfParticleLocal();i++) system_janus[i].seed = rand();
+#endif
     tree_janus.calcForceAllAndWriteBack
       (CalcForceEpEp(
 #ifdef DISSIPATIVE_RANDOM
@@ -1390,30 +1424,30 @@ int main(int argc, char *argv[]){
     }
     if(s == time_diag) {
       if(PS::Comm::getRank() == 0){
+	fout_eng<< " " << time_sys
+		<< " " << Epot1
+		<< " " << Etra1
+		<< " " << Erot1;
 #ifdef NOSE_HOOVER
 	const PS::F64 Etstat = 0.5*zeta*zeta*Q + g*temperature*log_s;
 	Etot1 += Etstat;
 
-	fout_eng<<time_sys<<"   "<< " " << Epot1 << " " << Etra1 << " " << Erot1 << " " << Etstat << " " << (Etot1-Etot0)/Etot0<<std::endl;
+	fout_eng << " " << Etstat;
 	/*
 	fprintf(stderr, "%10.7f %lf %lf %lf %lf %+e\n",
 		time_sys, Epot1, Etra1, Erot1, Etstat, (Etot1 - Etot0) / Etot0);
 	//*/
-#else
-	fout_eng << " " << time_sys
-		 << " " << Epot1
-		 << " " << Etra1
-		 << " " << Erot1
-		 << " " <<(Etot1-Etot0)/Etot0
+#endif
+	fout_eng << " " << (Etot1-Etot0)/Etot0
 		 << " " << mom.x
 		 << " " << mom.y
 		 << " " << mom.z
-		 <<std::endl;
+		 << std::endl;
 	/*
 	fprintf(stderr, "%10.7f %lf %lf %lf %+e\n",
 		time_sys, Epot1, Etra1, Erot1, (Etot1 - Etot0) / Etot0);
 	//*/
-#endif
+
 	time_diag += nstep_diag;
       }
     }
