@@ -528,8 +528,8 @@ struct CalcForceEpEp{
 #ifdef DISSIPATIVE_RANDOM
 	// dissipative force
 	const PS::F64vec dv = ep_i[i].vel - ep_j[j].vel;
-	const PS::F64 wij = 1.0 - r2;
-	const PS::F64 fd = gamma_dpd * wij*wij * (dv*dr) * rinv;
+	const PS::F64 wij = 1.0 - r;
+	const PS::F64 fd = gamma_dpd * wij*wij * (dv*dr) * rinv * rinv;
 	force_i -= fd * dr;
 	// random force
 #if 0
