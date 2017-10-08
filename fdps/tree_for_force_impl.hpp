@@ -236,9 +236,6 @@ namespace ParticleSimulator{
         ni_ave_ = nj_ave_ = 0;
 
         Comm::barrier();
-        if(Comm::getRank() == 0){
-            std::cerr<<"np_ave="<<np_ave<<std::endl;
-        }
 
         const F64 np_one_dim = pow( ((F64)np_ave)*1.0001, 1.0/DIMENSION) + 4;
 #ifdef PARTICLE_SIMULATOR_TWO_DIMENSION

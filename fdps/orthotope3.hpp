@@ -94,9 +94,9 @@ namespace ParticleSimulator{
         }
 
         unsigned int notOverlapped(const Vector3<T> & pos) const {
-            return (pos.x < low_.x) || (high_.x < pos.x)
-                || (pos.y < low_.y) || (high_.y < pos.y)
-                || (pos.z < low_.z) || (high_.z < pos.z);
+            return (pos.x < low_.x) || (high_.x <= pos.x)
+                || (pos.y < low_.y) || (high_.y <= pos.y)
+                || (pos.z < low_.z) || (high_.z <= pos.z);
         }
         unsigned int overlapped(const Vector3<T> & pos) const {
             return notOverlapped(pos) ^ 0x1;

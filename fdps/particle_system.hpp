@@ -615,10 +615,8 @@ namespace ParticleSimulator{
             const S32 rank  = MPI::COMM_WORLD.Get_rank();
             const S32 nproc = MPI::COMM_WORLD.Get_size();
             const S32 * n_domain = dinfo.getPointerOfNDomain();
-
             const F64ort * pos_domain = dinfo.getPointerOfPosDomain();
             const F64ort thisdomain = dinfo.getPosDomain(rank);
-
             S32 * nsend  = new S32[nproc];
             S32 * nsend_disp  = new S32[nproc+1];
             S32 * nrecv  = new S32[nproc];
@@ -631,18 +629,18 @@ namespace ParticleSimulator{
             nsend_disp[nproc] = nrecv_disp[nproc] = 0;
             F64 time_offset_inner = GetWtime();
             for(S32 ip = 0; ip < nloc; ip++) {
-                if( dinfo.getPosRootDomain().notOverlapped(ptcl_[ip].getPos()) ){
+	      if( dinfo.getPosRootDomain().notOverlapped(ptcl_[ip].getPos()) ){
                     PARTICLE_SIMULATOR_PRINT_ERROR("A particle is out of root domain");
+		    PARTICLE_SIMULATOR_PRINT_ERROR("A particle is out of root domain");
                     std::cerr<<"position of the particle="<<ptcl_[ip].getPos()<<std::endl;
                     std::cerr<<"position of the root domain="<<dinfo.getPosRootDomain()<<std::endl;
                     Abort(-1);
-                }
-                if(!determineWhetherParticleIsInDomain(ptcl_[ip].getPos(), thisdomain)) {
-                    S32 srank = searchWhichDomainParticleGoTo(ptcl_[ip].getPos(), n_domain, pos_domain);
-                    nsend[srank]++;
-                }
+	      }
+	      if(!determineWhetherParticleIsInDomain(ptcl_[ip].getPos(), thisdomain)) {
+		S32 srank = searchWhichDomainParticleGoTo(ptcl_[ip].getPos(), n_domain, pos_domain);
+		nsend[srank]++;
+	      }
             }
-
             nsend_disp[0] = 0;
             for(S32 i = 0; i < nproc; i++) {
                 nsend_disp[i+1] += nsend_disp[i] + nsend[i];
@@ -666,7 +664,6 @@ namespace ParticleSimulator{
             ptcl_.resizeNoInitialize(iloc);
             //time_profile_.exchange_particle__find_particle = GetWtime() - time_offset_inner;
             time_profile_.exchange_particle__find_particle += GetWtime() - time_offset_inner;
-
             // ****************************************************
             // *** receive the number of receive particles ********
             time_offset_inner = GetWtime();
@@ -677,7 +674,6 @@ namespace ParticleSimulator{
                 nrecv_disp[i+1] = nrecv_disp[i] + nrecv[i];
             }
             ptcl_recv_.resizeNoInitialize( nrecv_disp[nproc] );
-
             const S32 n_proc_comm_limit = 500;
             S32 n_proc_send = 0;
             S32 n_proc_recv = 0;
