@@ -81,6 +81,9 @@ class TEA{
     unsigned int u1 = __float_as_uint(v1);
     return gaussian_TEA<4>(u0>u1,u0,u1);
   }
+  float drand(const int& v0,const int& v1){
+    return gaussian_TEA<4>(v0>v1,v0,v1);
+  }
 };
 
 template<>
