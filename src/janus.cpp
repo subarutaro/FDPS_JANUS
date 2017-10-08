@@ -24,9 +24,7 @@
 
 #define LOWEST_LIMIT 1e-4
 
-#ifdef SMALL_SOLVENT
-const PS::F64 dj = 0.7;
-#endif
+const PS::F64 dj = 0.3;
 
 // patch informations
 #if 1
@@ -491,10 +489,7 @@ struct CalcForceEpEp{
     //static XORShift rn;
     static TEA rn;
 #endif
-
-#ifdef SMALL_SOLVENT
     const PS::F64 dij[2][2] = {{1.0,(1.0+dj)*0.5},{(1.0+dj)*0.5,dj}};
-#endif    
     for(int i=0;i<n_ip;i++){
       const PS::F64vec3 ri = ep_i[i].pos;
       const Quaternion  ai = ep_i[i].angle;
@@ -507,23 +502,19 @@ struct CalcForceEpEp{
 	const PS::F64vec3 rj = ep_j[j].pos;
 	const PS::F64vec3 dr = ri - rj;
 	const PS::F64 r2 = dr*dr;
+	const PS::F64 d = dij[type_i][ep_j[j].type];
 #ifdef DISSIPATIVE_RANDOM
 	const PS::S32 seed_i = ep_i[i].seed;
-	if(r2 > 1.0 || 1e-20f > r2) continue;
+	if(r2 > d*d || 1e-20f > r2) continue;
 #else
-	if(r2 > 1.0 || r2 == 0.0) continue;
+	if(r2 > d*d || r2 == 0.0) continue;
 #endif
 	const PS::F64 rinv = 1.0 / sqrt(r2);
 	const PS::F64 r2i = rinv*rinv;
 	const PS::F64 r   = r2*rinv;
 	// repulsive force
-#ifdef SMALL_SOLVENT
-	force_i += dr * (coef_r*(dij[type_i][ep_j[j].type] - r) * rinv);
-	pot_i += 0.5 * coef_r * (dij[type_i][ep_j[j].type] - r) * (dij[type_i][ep_j[j].type] - r);
-#else
-	force_i += dr * (coef_r*(1.0 - r) * rinv);
-	pot_i += 0.5 * coef_r * (1.0 - r) * (1.0 - r);
-#endif
+	force_i += dr * (coef_r*(d - r) * rinv);
+	pot_i   += 0.5 * coef_r * (d - r) * (d - r);
 	
 #ifdef DISSIPATIVE_RANDOM
 	// dissipative force
@@ -532,12 +523,7 @@ struct CalcForceEpEp{
 	const PS::F64 fd = gamma_dpd * wij*wij * (dv*dr) * rinv * rinv;
 	force_i -= fd * dr;
 	// random force
-#if 0
-	const PS::F64 tmp = rn.drand(seed_i, ep_j[j].seed);
-#else
 	const PS::F64 tmp = rn.drand((float)ep_i[i].vel.x,(float)ep_j[j].vel.x);
-#endif
-	//if(ep_i[i].id==0) printf("%lf\n",tmp);
 	const PS::F64 fr = sigma_dpd * wij * tmp * rinv * sqrtdti;
 	force_i += fr * dr;
 #endif
